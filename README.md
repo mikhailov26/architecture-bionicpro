@@ -6,13 +6,13 @@ Yandex Practicum. Software Architect. Sprint 9
 
 ### Доработаная диаграмма C4
 
-![C4 Diagram](./docs/BionicPRO_C4_model_solution.drawio.png)
+![C4 Diagram](./diagram/BionicPRO_C4_model_solution.drawio.png)
 
 ## Задание 2
 
 ### Доработаная диаграмма C4
 
-![C4 Diagram](./docs/BionicPRO_C4_model_solution_t2.drawio.png)
+![C4 Diagram](./diagram/BionicPRO_C4_model_solution_t2.drawio.png)
 
 ## Запуск проекта
 
