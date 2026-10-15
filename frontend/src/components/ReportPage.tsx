@@ -15,6 +15,7 @@ const ReportPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<ReportRow[] | null>(null);
+
   const downloadReport = async () => {
     if (!keycloak?.token) {
       setError("Not authenticated");
@@ -25,16 +26,19 @@ const ReportPage: React.FC = () => {
       setLoading(true);
       setError(null);
       setReport(null);
+
       await keycloak.updateToken(10);
       const response = await fetch(`${process.env.REACT_APP_API_URL}/reports`, {
         headers: {
           Authorization: `Bearer ${keycloak.token}`,
         },
       });
+
       if (!response.ok) {
         const text = await response.text();
         throw new Error(`Failed to load report: ${response.status} ${text}`);
       }
+
       const data: ReportRow[] = await response.json();
       setReport(Array.isArray(data) ? data : []);
     } catch (err) {
@@ -43,9 +47,12 @@ const ReportPage: React.FC = () => {
       setLoading(false);
     }
   };
+
   if (!initialized) {
     return <div>Loading...</div>;
   }
+
+  return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100">
       <div className="p-8 bg-white rounded-lg shadow-md">
         <h1 className="text-2xl font-bold mb-6">Usage Reports</h1>
@@ -55,47 +62,23 @@ const ReportPage: React.FC = () => {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Date
-                  </th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Prosthesis ID
-                  </th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Type
-                  </th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Avg
-                  </th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Min
-                  </th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Max
-                  </th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Prosthesis ID</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Avg</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Min</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Max</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {report.map((row, idx) => (
                   <tr key={`${row.date}-${idx}`}>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
-                      {row.date}
-                    </td>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
-                      {row.prosthesis_id}
-                    </td>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
-                      {row.type}
-                    </td>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
-                      {row.avg_metric.toFixed(2)}
-                    </td>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
-                      {row.min_metric.toFixed(2)}
-                    </td>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
-                      {row.max_metric.toFixed(2)}
-                    </td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{row.date}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{row.prosthesis_id}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{row.type}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{row.avg_metric.toFixed(2)}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{row.min_metric.toFixed(2)}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{row.max_metric.toFixed(2)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -108,6 +91,7 @@ const ReportPage: React.FC = () => {
             No data for your account yet.
           </div>
         )}
+
         <button
           onClick={downloadReport}
           disabled={loading}
@@ -119,6 +103,12 @@ const ReportPage: React.FC = () => {
         </button>
 
         {error && (
+          <div className="mt-4 p-4 bg-red-50 text-red-700 rounded">
+            {error}
+          </div>
+        )}
+      </div>
+    </div>
   );
 };
 

@@ -1,6 +1,5 @@
-FROM ghcr.io/astral-sh/uv:python3.11-alpine
+FROM astral/uv:python3.11-alpine
 RUN apk add --no-cache build-base lz4-dev zlib-dev zstd-dev
-
 
 WORKDIR /app
 
