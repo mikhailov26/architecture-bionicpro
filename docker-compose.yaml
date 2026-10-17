@@ -5,9 +5,8 @@ x-airflow-common: &airflow-common
     context: .
     dockerfile: Dockerfile.airflow
   environment: &airflow-common-env
-    AIRFLOW__CORE__EXECUTOR: LocalExecutor #локальный запуск
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
-    AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
     AIRFLOW__CORE__FERNET_KEY: ''
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
@@ -18,11 +17,11 @@ x-airflow-common: &airflow-common
     AIRFLOW_INPUT_DIR: '/opt/airflow/dag-inputs'
     AIRFLOW_CONN_CRM_DB: postgresql+psycopg2://airflow:airflow@postgres/sample
     AIRFLOW_CONN_TELEMETRY_DB: postgresql+psycopg2://airflow:airflow@postgres/sample
-    AIRFLOW_CONN_CLICKHOUSE_DB: clickhouse://admin:admin@clickhouse:9000/default
-
-
+    AIRFLOW_CONN_CLICKHOUSE_DB: http://admin:admin@clickhouse:8123/default
   volumes:
     - ./dags:/opt/airflow/dags
+    - ./logs:/opt/airflow/logs
+    - ./dag-inputs:/opt/airflow/dag-inputs
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on: &airflow-common-depends-on
     postgres:
@@ -63,25 +62,42 @@ services:
       - "8080:8080"
     depends_on:
       keycloak_db:
-        condition: service_healthy   
-    restart: always                   
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /realms/master HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q '200 OK'"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    restart: always
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        REACT_APP_API_URL: http://localhost:8000
+        REACT_APP_KEYCLOAK_URL: http://localhost:8080
+        REACT_APP_KEYCLOAK_REALM: reports-realm
+        REACT_APP_KEYCLOAK_CLIENT_ID: reports-frontend
     ports:
       - "3000:3000"
     environment:
-      REACT_APP_API_URL: http://backend:8000
+      REACT_APP_API_URL: http://localhost:8000
       REACT_APP_KEYCLOAK_URL: http://localhost:8080
       REACT_APP_KEYCLOAK_REALM: reports-realm
       REACT_APP_KEYCLOAK_CLIENT_ID: reports-frontend
+    depends_on:
+      keycloak:
+        condition: service_healthy
+      backend:
+        condition: service_started
+
   postgres:
     image: postgres:16.0
     volumes:
       - ./db/init-db.sql:/docker-entrypoint-initdb.d/db.sql
-      - postgres_data:/var/lib/postgresql/data 
+      - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     environment:
@@ -103,10 +119,8 @@ services:
       start_period: 5s
     restart: always
 
-
   airflow-webserver:
     <<: *airflow-common
-
     ports:
       - "8090:8080"
     depends_on:
@@ -116,10 +130,12 @@ services:
         condition: service_completed_successfully
     command: webserver
     healthcheck:
-      test: [ "CMD-SHELL", "curl -f http://localhost:8080/health || exit 1" ]
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 30s
+    restart: always
 
   airflow-scheduler:
     <<: *airflow-common
@@ -127,13 +143,15 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      airflow-webserver:
-        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
     healthcheck:
-      test: [ "CMD-SHELL", "curl -f http://localhost:8080/health || exit 1" ]
+      test: ["CMD-SHELL", "airflow jobs check --job-type SchedulerJob --hostname $$HOSTNAME"]
       interval: 30s
       timeout: 10s
-      retries: 3
+      retries: 5
+      start_period: 30s
+    restart: always
 
   airflow-triggerer:
     <<: *airflow-common
@@ -146,7 +164,7 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        - airflow jobs check --job-type TriggererJob --hostname "${HOSTNAME}"
+        - airflow jobs check --job-type TriggererJob --hostname "$${HOSTNAME}"
       interval: 30s
       timeout: 10s
       retries: 5
@@ -158,7 +176,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-
     command:
       - bash
       - -c
@@ -169,10 +186,18 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    command: >
-      bash -c " airflow db init && airflow users create \ --username admin \ --firstname admin \ --lastname admin \ --role Admin \ --email admin@sample.ru \ --password admin 
-
-      "
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db migrate &&
+        (airflow users create \
+          --username admin \
+          --firstname admin \
+          --lastname admin \
+          --role Admin \
+          --email admin@sample.ru \
+          --password admin || true)
 
   clickhouse:
     image: clickhouse/clickhouse-server:latest
@@ -188,6 +213,13 @@ services:
       CLICKHOUSE_USER: admin
       CLICKHOUSE_PASSWORD: admin
       CLICKHOUSE_DEFAULT_DATABASE: default
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:8123/ping || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: always
 
   backend:
     build:
@@ -197,12 +229,23 @@ services:
       - "8000:8000"
     environment:
       KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_PUBLIC_URL: http://localhost:8080
       KEYCLOAK_REALM: reports-realm
       KEYCLOAK_CLIENT_ID: reports-backend
       KEYCLOAK_CLIENT_SECRET: oNwoLQdvJAvRcL89SydqCWCe5ry1jMgq
+      KEYCLOAK_AUDIENCE: reports-frontend
+      REQUIRED_ROLE: prothetic_user
+      CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_PORT: 8123
+      CLICKHOUSE_USER: admin
+      CLICKHOUSE_PASSWORD: admin
+      CLICKHOUSE_DATABASE: default
     depends_on:
-      - clickhouse
-      - keycloak
+      clickhouse:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    restart: always
 
 volumes:
   keycloak_db_data:

@@ -18,8 +18,10 @@ const App: React.FC = () => {
       initOptions={{
         flow: "standard",
         pkceMethod: "S256",
-        onLoad: "check-sso",
+        onLoad: "login-required",
+        checkLoginIframe: false,
       }}
+      LoadingComponent={<div style={{ padding: 40 }}>Загрузка…</div>}
     >
       <div className="App">
         <ReportPage />
